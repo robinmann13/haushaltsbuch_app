@@ -1,0 +1,27 @@
+{
+	"flutter": {
+		"platforms": {
+			"android": {
+				"default": {
+					"projectId": "haushaltsbuch-app-rm",
+					"appId": "1:1061009452216:android:614358ef5abc883827d84d",
+					"fileOutput": "android/app/google-services.json"
+				}
+			},
+			"dart": {
+				"lib/firebase_options.dart": {
+					"projectId": "haushaltsbuch-app-rm",
+					"configurations": {
+						"android": "1:1061009452216:android:614358ef5abc883827d84d",
+						"ios": "1:1061009452216:ios:24081de896b1f19027d84d",
+						"web": "1:1061009452216:web:19178f6fe321374527d84d",
+						"windows": "1:1061009452216:web:19178f6fe321374527d84d"
+					}
+				}
+			}
+		}
+	},
+	"firestore": {
+		"rules": "firestore.rules"
+	}
+}

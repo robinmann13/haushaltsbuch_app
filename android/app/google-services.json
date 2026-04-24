@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1061009452216",
+    "project_id": "haushaltsbuch-app-rm",
+    "storage_bucket": "haushaltsbuch-app-rm.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1061009452216:android:614358ef5abc883827d84d",
+        "android_client_info": {
+          "package_name": "com.example.haushaltsbuch_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCilzDHmSRV3CYeDAOV6Q-MtRtBOD8P_Ig"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

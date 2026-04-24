@@ -1,0 +1,59 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function ownUid(userId) {
+      return signedIn() && request.auth.uid == userId;
+    }
+
+    function membershipDoc() {
+      return /databases/$(database)/documents/user_memberships/$(request.auth.uid);
+    }
+
+    function hasActiveMembership(householdId) {
+      return signedIn()
+        && exists(membershipDoc())
+        && get(membershipDoc()).data.aktiv == true
+        && get(membershipDoc()).data.householdId == householdId;
+    }
+
+    match /user_memberships/{userId} {
+      allow read: if ownUid(userId);
+      allow create: if ownUid(userId) && !exists(/databases/$(database)/documents/user_memberships/$(userId));
+      allow update, delete: if false;
+    }
+
+    match /households/{householdId} {
+      allow read: if hasActiveMembership(householdId);
+      allow create: if signedIn();
+      allow update, delete: if false;
+
+      match /users/{userId} {
+        allow read: if hasActiveMembership(householdId);
+        allow create: if ownUid(userId) && hasActiveMembership(householdId);
+        allow update: if ownUid(userId) && hasActiveMembership(householdId);
+        allow delete: if false;
+      }
+
+      match /entries/{entryId} {
+        allow read, write: if hasActiveMembership(householdId);
+      }
+
+      match /fixed_costs/{fixedCostId} {
+        allow read, write: if hasActiveMembership(householdId);
+      }
+
+      match /vacations/{vacationId} {
+        allow read, write: if hasActiveMembership(householdId);
+      }
+
+      match /vacation_entries/{vacationEntryId} {
+        allow read, write: if hasActiveMembership(householdId);
+      }
+    }
+  }
+}
