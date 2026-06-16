@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../repositories/auth_repository.dart';
 import '../../repositories/household_repository.dart';
+import '../home/home_screen.dart';
 import 'login_screen.dart';
 
 class AuthGate extends StatelessWidget {
@@ -150,64 +151,12 @@ class _HouseholdLoaderState extends State<_HouseholdLoader> {
           );
         }
 
-        return _HomeScreen(
+        return HomeScreen(
           authRepository: widget.authRepository,
           householdMembership: householdMembership,
           user: widget.user,
         );
       },
-    );
-  }
-}
-
-class _HomeScreen extends StatelessWidget {
-  const _HomeScreen({
-    required this.authRepository,
-    required this.householdMembership,
-    required this.user,
-  });
-
-  final AuthRepository authRepository;
-  final HouseholdMembership householdMembership;
-  final User user;
-
-  @override
-  Widget build(BuildContext context) {
-    final email = user.email;
-    final household = householdMembership.household;
-    final membership = householdMembership.membership;
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Haushaltsbuch'),
-      ),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text(
-                'Angemeldet',
-                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-              ),
-              if (email != null) ...[
-                const SizedBox(height: 12),
-                Text('E-Mail: $email'),
-              ],
-              const SizedBox(height: 12),
-              Text('Household-ID: ${household.id}'),
-              const SizedBox(height: 12),
-              Text('Rolle: ${membership.role}'),
-              const SizedBox(height: 24),
-              FilledButton(
-                onPressed: authRepository.signOut,
-                child: const Text('Abmelden'),
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 }
