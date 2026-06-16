@@ -38,4 +38,34 @@ class EntryRepository {
       note: note,
     );
   }
+
+  Future<void> updateEntry({
+    required String householdId,
+    required String entryId,
+    required TransactionType type,
+    required int amountCent,
+    required String category,
+    required DateTime date,
+    String? note,
+  }) {
+    return _entryRemoteService.updateEntry(
+      householdId: householdId,
+      entryId: entryId,
+      type: type,
+      amountCent: amountCent,
+      category: category,
+      date: date,
+      note: note,
+    );
+  }
+
+  Future<void> deleteEntry({
+    required String householdId,
+    required String entryId,
+  }) {
+    return _entryRemoteService.deleteEntry(
+      householdId: householdId,
+      entryId: entryId,
+    );
+  }
 }

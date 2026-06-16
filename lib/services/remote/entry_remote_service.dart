@@ -65,4 +65,35 @@ class EntryRemoteService {
 
     return document.id;
   }
+
+  Future<void> updateEntry({
+    required String householdId,
+    required String entryId,
+    required TransactionType type,
+    required int amountCent,
+    required String category,
+    required DateTime date,
+    String? note,
+  }) {
+    final cleanNote = note?.trim();
+
+    return _entries(householdId).doc(entryId).update({
+      'type': type.value,
+      'amountCent': amountCent,
+      'category': category.trim(),
+      'date': Timestamp.fromDate(date),
+      'yearMonth': yearMonthFromDate(date),
+      'note': cleanNote == null || cleanNote.isEmpty
+          ? FieldValue.delete()
+          : cleanNote,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  Future<void> deleteEntry({
+    required String householdId,
+    required String entryId,
+  }) {
+    return _entries(householdId).doc(entryId).delete();
+  }
 }

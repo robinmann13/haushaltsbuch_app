@@ -147,6 +147,14 @@ class _HomeScreenState extends State<HomeScreen> {
                                 itemBuilder: (context, index) {
                                   return _TransactionTile(
                                     transaction: monthlyTransactions[index],
+                                    onEdit: () => _openEditTransactionDialog(
+                                      context,
+                                      monthlyTransactions[index],
+                                    ),
+                                    onDelete: () => _confirmDeleteTransaction(
+                                      context,
+                                      monthlyTransactions[index],
+                                    ),
                                   );
                                 },
                               ),
@@ -172,6 +180,65 @@ class _HomeScreenState extends State<HomeScreen> {
         initialDate: _selectedMonth,
       ),
     );
+  }
+
+  Future<void> _openEditTransactionDialog(
+    BuildContext context,
+    HouseholdTransaction transaction,
+  ) {
+    return showDialog<void>(
+      context: context,
+      builder: (context) => _AddTransactionDialog(
+        entryRepository: widget._entryRepository,
+        householdId: widget.householdMembership.household.id,
+        userId: widget.user.uid,
+        initialDate: transaction.date,
+        transaction: transaction,
+      ),
+    );
+  }
+
+  Future<void> _confirmDeleteTransaction(
+    BuildContext context,
+    HouseholdTransaction transaction,
+  ) async {
+    final shouldDelete = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Buchung loeschen?'),
+        content: const Text('Diese Buchung wird dauerhaft geloescht.'),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop(false);
+            },
+            child: const Text('Abbrechen'),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.of(context).pop(true);
+            },
+            child: const Text('Loeschen'),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldDelete != true || !context.mounted) {
+      return;
+    }
+
+    try {
+      await widget._entryRepository.deleteEntry(
+        householdId: widget.householdMembership.household.id,
+        entryId: transaction.id,
+      );
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString())),
+      );
+    }
   }
 }
 
@@ -243,9 +310,15 @@ class _MonthSummaryView extends StatelessWidget {
 }
 
 class _TransactionTile extends StatelessWidget {
-  const _TransactionTile({required this.transaction});
+  const _TransactionTile({
+    required this.transaction,
+    required this.onEdit,
+    required this.onDelete,
+  });
 
   final HouseholdTransaction transaction;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
 
   @override
   Widget build(BuildContext context) {
@@ -257,7 +330,25 @@ class _TransactionTile extends StatelessWidget {
         '${transaction.category}',
       ),
       subtitle: note == null || note.isEmpty ? null : Text(note),
-      trailing: Text(_formatAmount(transaction.amountCent)),
+      onTap: onEdit,
+      leading: IconButton(
+        onPressed: onEdit,
+        icon: const Icon(Icons.edit),
+        tooltip: 'Bearbeiten',
+      ),
+      isThreeLine: note != null && note.isNotEmpty,
+      trailing: Wrap(
+        spacing: 8,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          Text(_formatAmount(transaction.amountCent)),
+          IconButton(
+            onPressed: onDelete,
+            icon: const Icon(Icons.delete),
+            tooltip: 'Loeschen',
+          ),
+        ],
+      ),
     );
   }
 }
@@ -268,12 +359,14 @@ class _AddTransactionDialog extends StatefulWidget {
     required this.householdId,
     required this.userId,
     required this.initialDate,
+    this.transaction,
   });
 
   final EntryRepository entryRepository;
   final String householdId;
   final String userId;
   final DateTime initialDate;
+  final HouseholdTransaction? transaction;
 
   @override
   State<_AddTransactionDialog> createState() => _AddTransactionDialogState();
@@ -287,11 +380,25 @@ class _AddTransactionDialogState extends State<_AddTransactionDialog> {
   late String _category;
   bool _isSaving = false;
 
+  bool get _isEditing => widget.transaction != null;
+
   @override
   void initState() {
     super.initState();
-    _category = defaultCategoryForTransactionType(_type);
-    _dateController.text = _formatDate(widget.initialDate);
+    final transaction = widget.transaction;
+
+    if (transaction == null) {
+      _category = defaultCategoryForTransactionType(_type);
+      _dateController.text = _formatDate(widget.initialDate);
+    } else {
+      _type = transaction.type;
+      _category = transaction.category.isEmpty
+          ? defaultCategoryForTransactionType(_type)
+          : transaction.category;
+      _amountController.text = _formatAmountForInput(transaction.amountCent);
+      _dateController.text = _formatDate(transaction.date);
+      _noteController.text = transaction.note ?? '';
+    }
   }
 
   @override
@@ -326,15 +433,29 @@ class _AddTransactionDialogState extends State<_AddTransactionDialog> {
     });
 
     try {
-      await widget.entryRepository.createTransaction(
-        householdId: widget.householdId,
-        userId: widget.userId,
-        type: _type,
-        amountCent: amountCent,
-        category: _category,
-        date: date,
-        note: _noteController.text,
-      );
+      final transaction = widget.transaction;
+
+      if (transaction == null) {
+        await widget.entryRepository.createTransaction(
+          householdId: widget.householdId,
+          userId: widget.userId,
+          type: _type,
+          amountCent: amountCent,
+          category: _category,
+          date: date,
+          note: _noteController.text,
+        );
+      } else {
+        await widget.entryRepository.updateEntry(
+          householdId: widget.householdId,
+          entryId: transaction.id,
+          type: _type,
+          amountCent: amountCent,
+          category: _category,
+          date: date,
+          note: _noteController.text,
+        );
+      }
 
       if (!mounted) return;
       Navigator.of(context).pop();
@@ -348,6 +469,16 @@ class _AddTransactionDialogState extends State<_AddTransactionDialog> {
         });
       }
     }
+  }
+
+  List<String> get _availableCategories {
+    final categories = List<String>.of(categoriesForTransactionType(_type));
+
+    if (_category.isNotEmpty && !categories.contains(_category)) {
+      categories.add(_category);
+    }
+
+    return categories;
   }
 
   void _showError(String message) {
@@ -375,7 +506,7 @@ class _AddTransactionDialogState extends State<_AddTransactionDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('Buchung hinzufuegen'),
+      title: Text(_isEditing ? 'Buchung bearbeiten' : 'Buchung hinzufuegen'),
       content: SingleChildScrollView(
         child: SizedBox(
           width: 360,
@@ -412,7 +543,7 @@ class _AddTransactionDialogState extends State<_AddTransactionDialog> {
                 key: ValueKey(_type),
                 initialValue: _category,
                 decoration: const InputDecoration(labelText: 'Kategorie'),
-                items: categoriesForTransactionType(_type)
+                items: _availableCategories
                     .map(
                       (category) => DropdownMenuItem(
                         value: category,
@@ -502,6 +633,12 @@ String _formatAmount(int amountCent) {
   final euros = absoluteAmountCent ~/ 100;
   final cents = (absoluteAmountCent % 100).toString().padLeft(2, '0');
   return '$sign$euros,$cents';
+}
+
+String _formatAmountForInput(int amountCent) {
+  final euros = amountCent ~/ 100;
+  final cents = (amountCent % 100).toString().padLeft(2, '0');
+  return '$euros,$cents';
 }
 
 int? _parseAmountCent(String value) {
