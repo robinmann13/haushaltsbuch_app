@@ -2,11 +2,12 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../../models/entry.dart';
+import '../../models/entry_category.dart';
 import '../../repositories/auth_repository.dart';
 import '../../repositories/entry_repository.dart';
 import '../../repositories/household_repository.dart';
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   HomeScreen({
     super.key,
     required this.authRepository,
@@ -21,17 +22,44 @@ class HomeScreen extends StatelessWidget {
   final EntryRepository _entryRepository;
 
   @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  late DateTime _selectedMonth;
+
+  @override
+  void initState() {
+    super.initState();
+    final now = DateTime.now();
+    _selectedMonth = DateTime(now.year, now.month);
+  }
+
+  void _goToPreviousMonth() {
+    setState(() {
+      _selectedMonth = DateTime(_selectedMonth.year, _selectedMonth.month - 1);
+    });
+  }
+
+  void _goToNextMonth() {
+    setState(() {
+      _selectedMonth = DateTime(_selectedMonth.year, _selectedMonth.month + 1);
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final email = user.email;
-    final household = householdMembership.household;
-    final membership = householdMembership.membership;
+    final email = widget.user.email;
+    final household = widget.householdMembership.household;
+    final membership = widget.householdMembership.membership;
+    final selectedYearMonth = yearMonthFromDate(_selectedMonth);
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Haushaltsbuch'),
         actions: [
           TextButton(
-            onPressed: authRepository.signOut,
+            onPressed: widget.authRepository.signOut,
             child: const Text('Abmelden'),
           ),
         ],
@@ -54,9 +82,29 @@ class HomeScreen extends StatelessWidget {
               child: const Text('Buchung hinzufuegen'),
             ),
             const SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                IconButton(
+                  onPressed: _goToPreviousMonth,
+                  icon: const Icon(Icons.chevron_left),
+                  tooltip: 'Vorheriger Monat',
+                ),
+                Text(
+                  selectedYearMonth,
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                IconButton(
+                  onPressed: _goToNextMonth,
+                  icon: const Icon(Icons.chevron_right),
+                  tooltip: 'Naechster Monat',
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
             Expanded(
               child: StreamBuilder<List<HouseholdTransaction>>(
-                stream: _entryRepository.watchTransactionsForHousehold(
+                stream: widget._entryRepository.watchTransactionsForHousehold(
                   household.id,
                 ),
                 builder: (context, snapshot) {
@@ -70,22 +118,40 @@ class HomeScreen extends StatelessWidget {
 
                   final transactions =
                       snapshot.data ?? const <HouseholdTransaction>[];
+                  final monthlyTransactions = transactions
+                      .where(
+                        (transaction) =>
+                            transaction.yearMonth == selectedYearMonth,
+                      )
+                      .toList()
+                    ..sort((a, b) => b.date.compareTo(a.date));
+                  final summary =
+                      _MonthSummary.fromTransactions(monthlyTransactions);
 
-                  if (transactions.isEmpty) {
-                    return const Center(
-                      child: Text('Noch keine Buchungen vorhanden.'),
-                    );
-                  }
-
-                  return ListView.separated(
-                    itemCount: transactions.length,
-                    separatorBuilder: (context, index) =>
-                        const Divider(height: 1),
-                    itemBuilder: (context, index) {
-                      return _TransactionTile(
-                        transaction: transactions[index],
-                      );
-                    },
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _MonthSummaryView(summary: summary),
+                      const SizedBox(height: 12),
+                      Expanded(
+                        child: monthlyTransactions.isEmpty
+                            ? const Center(
+                                child: Text(
+                                  'Keine Buchungen in diesem Monat.',
+                                ),
+                              )
+                            : ListView.separated(
+                                itemCount: monthlyTransactions.length,
+                                separatorBuilder: (context, index) =>
+                                    const Divider(height: 1),
+                                itemBuilder: (context, index) {
+                                  return _TransactionTile(
+                                    transaction: monthlyTransactions[index],
+                                  );
+                                },
+                              ),
+                      ),
+                    ],
                   );
                 },
               ),
@@ -100,9 +166,77 @@ class HomeScreen extends StatelessWidget {
     return showDialog<void>(
       context: context,
       builder: (context) => _AddTransactionDialog(
-        entryRepository: _entryRepository,
-        householdId: householdMembership.household.id,
-        userId: user.uid,
+        entryRepository: widget._entryRepository,
+        householdId: widget.householdMembership.household.id,
+        userId: widget.user.uid,
+        initialDate: _selectedMonth,
+      ),
+    );
+  }
+}
+
+class _MonthSummary {
+  const _MonthSummary({
+    required this.incomeCent,
+    required this.expenseCent,
+  });
+
+  final int incomeCent;
+  final int expenseCent;
+
+  int get balanceCent => incomeCent - expenseCent;
+
+  factory _MonthSummary.fromTransactions(
+    List<HouseholdTransaction> transactions,
+  ) {
+    var incomeCent = 0;
+    var expenseCent = 0;
+
+    for (final transaction in transactions) {
+      switch (transaction.type) {
+        case TransactionType.income:
+          incomeCent += transaction.amountCent;
+        case TransactionType.expense:
+          expenseCent += transaction.amountCent;
+      }
+    }
+
+    return _MonthSummary(
+      incomeCent: incomeCent,
+      expenseCent: expenseCent,
+    );
+  }
+}
+
+class _MonthSummaryView extends StatelessWidget {
+  const _MonthSummaryView({required this.summary});
+
+  final _MonthSummary summary;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'Monatsuebersicht',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 16,
+              runSpacing: 8,
+              children: [
+                Text('Einnahmen: ${_formatAmount(summary.incomeCent)}'),
+                Text('Ausgaben: ${_formatAmount(summary.expenseCent)}'),
+                Text('Saldo: ${_formatAmount(summary.balanceCent)}'),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -133,11 +267,13 @@ class _AddTransactionDialog extends StatefulWidget {
     required this.entryRepository,
     required this.householdId,
     required this.userId,
+    required this.initialDate,
   });
 
   final EntryRepository entryRepository;
   final String householdId;
   final String userId;
+  final DateTime initialDate;
 
   @override
   State<_AddTransactionDialog> createState() => _AddTransactionDialogState();
@@ -145,22 +281,22 @@ class _AddTransactionDialog extends StatefulWidget {
 
 class _AddTransactionDialogState extends State<_AddTransactionDialog> {
   final _amountController = TextEditingController();
-  final _categoryController = TextEditingController();
   final _dateController = TextEditingController();
   final _noteController = TextEditingController();
   TransactionType _type = TransactionType.expense;
+  late String _category;
   bool _isSaving = false;
 
   @override
   void initState() {
     super.initState();
-    _dateController.text = _formatDate(DateTime.now());
+    _category = defaultCategoryForTransactionType(_type);
+    _dateController.text = _formatDate(widget.initialDate);
   }
 
   @override
   void dispose() {
     _amountController.dispose();
-    _categoryController.dispose();
     _dateController.dispose();
     _noteController.dispose();
     super.dispose();
@@ -169,14 +305,13 @@ class _AddTransactionDialogState extends State<_AddTransactionDialog> {
   Future<void> _save() async {
     final amountCent = _parseAmountCent(_amountController.text);
     final date = DateTime.tryParse(_dateController.text.trim());
-    final category = _categoryController.text.trim();
 
     if (amountCent == null || amountCent <= 0) {
       _showError('Bitte einen gueltigen Betrag eingeben.');
       return;
     }
 
-    if (category.isEmpty) {
+    if (_category.isEmpty) {
       _showError('Bitte eine Kategorie eingeben.');
       return;
     }
@@ -196,7 +331,7 @@ class _AddTransactionDialogState extends State<_AddTransactionDialog> {
         userId: widget.userId,
         type: _type,
         amountCent: amountCent,
-        category: category,
+        category: _category,
         date: date,
         note: _noteController.text,
       );
@@ -266,6 +401,31 @@ class _AddTransactionDialogState extends State<_AddTransactionDialog> {
                         if (value != null) {
                           setState(() {
                             _type = value;
+                            _category =
+                                defaultCategoryForTransactionType(value);
+                          });
+                        }
+                      },
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                key: ValueKey(_type),
+                initialValue: _category,
+                decoration: const InputDecoration(labelText: 'Kategorie'),
+                items: categoriesForTransactionType(_type)
+                    .map(
+                      (category) => DropdownMenuItem(
+                        value: category,
+                        child: Text(category),
+                      ),
+                    )
+                    .toList(),
+                onChanged: _isSaving
+                    ? null
+                    : (value) {
+                        if (value != null) {
+                          setState(() {
+                            _category = value;
                           });
                         }
                       },
@@ -281,12 +441,6 @@ class _AddTransactionDialogState extends State<_AddTransactionDialog> {
                   labelText: 'Betrag',
                   hintText: '12,50',
                 ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _categoryController,
-                enabled: !_isSaving,
-                decoration: const InputDecoration(labelText: 'Kategorie'),
               ),
               const SizedBox(height: 12),
               TextField(
@@ -343,9 +497,11 @@ String _formatDate(DateTime date) {
 }
 
 String _formatAmount(int amountCent) {
-  final euros = amountCent ~/ 100;
-  final cents = (amountCent % 100).toString().padLeft(2, '0');
-  return '$euros,$cents';
+  final sign = amountCent < 0 ? '-' : '';
+  final absoluteAmountCent = amountCent.abs();
+  final euros = absoluteAmountCent ~/ 100;
+  final cents = (absoluteAmountCent % 100).toString().padLeft(2, '0');
+  return '$sign$euros,$cents';
 }
 
 int? _parseAmountCent(String value) {
